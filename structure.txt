@@ -1,0 +1,7 @@
+tracker/
+├─ app/
+│  ├─ main.py          # controller: REPL + dispatch + tiny JSON checks
+│  └─ llm.py   # LLM JSON-only calls
+└─ db/
+   ├─ schema.sql       # tables only
+   └─ api.py           # parameterized SQLite helpers
