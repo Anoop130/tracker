@@ -5,9 +5,12 @@ from app.llm import chat_once, estimate_food
 from db import api
 from dotenv import load_dotenv
 
+
+import os
+DEBUG_RAW = os.getenv("DEBUG_RAW", "0") == "1"
+
 load_dotenv() 
-
-
+    
 # ---- minimal JSON checks (no pydantic) ----
 def parse_turn(raw: str) -> dict:
     try:
