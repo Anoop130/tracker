@@ -1,0 +1,279 @@
+# AI-Powered Nutrition Coach:
+# CLI prototype into full-stack platform (React + FastAPI)
+
+## CURRENT STATE
+- Working CLI with LLM integration (Ollama/OpenAI)
+- SQLite database with nutrition tracking
+- JSON-based action system
+- Basic food logging and goal setting
+
+## TARGET DELIVERABLES (End of Day)
+1. FastAPI backend with REST endpoints
+2. React frontend with basic UI
+3. User authentication system
+4. Real-time chat interface
+5. Nutrition dashboard with charts
+6. Mobile-responsive design
+
+## RAPID DEVELOPMENT STRATEGY
+- Focus on MVP features only
+- Use existing codebase as foundation
+- Leverage code generation and templates
+- Prioritize functionality over perfection
+- Deploy locally for demonstration
+
+## PHASE 1: BACKEND API (2-3 hours)
+### 1.1 FastAPI Setup (30 mins)
+- [ ] Create FastAPI app structure
+- [ ] Convert existing functions to API endpoints
+- [ ] Add CORS middleware for React
+- [ ] Set up basic error handling
+
+### 1.2 Core API Endpoints (1 hour)
+- [ ] POST /api/auth/login (basic auth)
+- [ ] GET /api/foods (list foods)
+- [ ] POST /api/foods (add food)
+- [ ] POST /api/meals (log meal)
+- [ ] GET /api/summary (daily summary)
+- [ ] POST /api/goals (set goals)
+
+### 1.3 Database Integration (30 mins)
+- [ ] Keep SQLite for simplicity
+- [ ] Add user_id to existing tables
+- [ ] Create basic user table
+- [ ] Update existing queries
+
+### 1.4 LLM Integration (30 mins)
+- [ ] Expose LLM chat as API endpoint
+- [ ] Add food estimation endpoint
+- [ ] Keep existing prompt system
+
+## PHASE 2: REACT FRONTEND (3-4 hours)
+### 2.1 Project Setup (30 mins)
+- [ ] Create React app with Vite
+- [ ] Install essential dependencies (axios, react-router, chart.js)
+- [ ] Set up basic routing structure
+- [ ] Configure API client
+
+### 2.2 Core Components (2 hours)
+- [ ] Login/Register forms
+- [ ] Dashboard with nutrition overview
+- [ ] Food logging interface
+- [ ] Chat interface for nutrition coach
+- [ ] Goals management
+
+### 2.3 UI/UX (1 hour)
+- [ ] Basic styling with CSS modules
+- [ ] Responsive design
+- [ ] Chart components for nutrition data
+- [ ] Mobile-friendly layout
+
+### 2.4 Integration (30 mins)
+- [ ] Connect frontend to backend APIs
+- [ ] Implement real-time chat
+- [ ] Add error handling and loading states
+
+## PHASE 3: ENHANCED FEATURES (2-3 hours)
+### 3.1 Real-time Features (1 hour)
+- [ ] WebSocket integration for chat
+- [ ] Live nutrition updates
+- [ ] Real-time goal progress
+
+### 3.2 Data Visualization (1 hour)
+- [ ] Daily nutrition charts
+- [ ] Progress tracking graphs
+- [ ] Goal vs actual comparisons
+
+### 3.3 Mobile Optimization (1 hour)
+- [ ] PWA configuration
+- [ ] Touch-friendly interface
+- [ ] Offline functionality
+
+## PHASE 4: TESTING & DEPLOYMENT (1-2 hours)
+### 4.1 Basic Testing (30 mins)
+- [ ] API endpoint testing
+- [ ] Frontend component testing
+- [ ] Integration testing
+
+### 4.2 Local Deployment (30 mins)
+- [ ] Docker setup for easy deployment
+- [ ] Environment configuration
+- [ ] Local hosting setup
+
+### 4.3 Documentation (30 mins)
+- [ ] API documentation
+- [ ] Setup instructions
+- [ ] Demo script
+
+## DETAILED IMPLEMENTATION GUIDE
+
+### Backend Structure
+```
+backend/
+├── app/
+│   ├── main.py              # FastAPI app
+│   ├── auth.py              # Authentication
+│   ├── nutrition.py         # Nutrition endpoints
+│   ├── chat.py              # LLM chat
+│   └── models.py            # Database models
+├── db/
+│   ├── database.py          # Database connection
+│   └── schema.sql           # Existing schema
+└── requirements.txt         # Dependencies
+```
+
+### Frontend Structure
+```
+frontend/
+├── src/
+│   ├── components/
+│   │   ├── Dashboard.jsx
+│   │   ├── FoodLog.jsx
+│   │   ├── Chat.jsx
+│   │   └── Goals.jsx
+│   ├── services/
+│   │   └── api.js
+│   ├── hooks/
+│   │   └── useAuth.js
+│   └── App.jsx
+├── public/
+└── package.json
+```
+
+### API Endpoints Specification
+```
+POST /api/auth/login
+- Body: {email, password}
+- Response: {token, user}
+
+GET /api/foods
+- Query: ?search=term
+- Response: [{id, name, serving_desc, cal, protein, carbs, fat}]
+
+POST /api/foods
+- Body: {name, serving_desc, cal, protein, carbs, fat}
+- Response: {id, ...}
+
+POST /api/meals
+- Body: {items: [{name, qty}]}
+- Response: {success: true}
+
+GET /api/summary
+- Query: ?date=YYYY-MM-DD
+- Response: {date, cal, protein, carbs, fat}
+
+POST /api/goals
+- Body: {calories, protein_g, carbs_g, fat_g}
+- Response: {success: true}
+
+POST /api/chat
+- Body: {message, history}
+- Response: {speak, actions}
+```
+
+### Database Schema Updates
+```sql
+-- Add to existing schema
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Update existing tables to include user_id
+ALTER TABLE foods ADD COLUMN user_id INTEGER REFERENCES users(id);
+ALTER TABLE logs ADD COLUMN user_id INTEGER REFERENCES users(id);
+ALTER TABLE goals ADD COLUMN user_id INTEGER REFERENCES users(id);
+```
+
+### Essential Dependencies
+Backend:
+- fastapi
+- uvicorn
+- sqlalchemy
+- python-jose (JWT)
+- passlib (password hashing)
+- python-multipart
+- websockets
+
+Frontend:
+- react
+- react-router-dom
+- axios
+- chart.js
+- socket.io-client
+- @mui/material (optional)
+
+### Key Features Implementation
+
+#### 1. Authentication System
+- Simple email/password login
+- JWT token-based sessions
+- Basic user registration
+- Password hashing with bcrypt
+
+#### 2. Real-time Chat
+- WebSocket connection for live chat
+- Integration with existing LLM system
+- Message history persistence
+- Typing indicators
+
+#### 3. Nutrition Dashboard
+- Daily macro breakdown charts
+- Goal progress visualization
+- Recent meals list
+- Quick food logging
+
+#### 4. Mobile Responsiveness
+- Responsive grid layout
+- Touch-friendly buttons
+- Mobile navigation
+- PWA manifest
+
+## RAPID DEVELOPMENT TIPS
+
+### Code Generation
+- Use FastAPI's automatic OpenAPI docs
+- Leverage React component templates
+- Copy/paste from existing codebase
+- Use AI code generation for boilerplate
+
+### Testing Strategy
+- Focus on critical path testing
+- Use Postman for API testing
+- Manual testing for UI flows
+- Skip comprehensive test coverage for now
+
+### Deployment
+- Use Docker for easy setup
+- Deploy locally with docker-compose
+- Use environment variables for config
+- Keep it simple for demo purposes
+
+## SUCCESS CRITERIA
+By end of day, you should have:
+1. Working FastAPI backend with all endpoints
+2. React frontend with core features
+3. User authentication system
+4. Real-time chat with LLM
+5. Nutrition tracking dashboard
+6. Mobile-responsive design
+7. Local deployment ready
+8. Demo-ready application
+
+## TIMELINE BREAKDOWN
+- 9:00-12:00: Backend API development
+- 12:00-13:00: Lunch break
+- 13:00-17:00: Frontend development
+- 17:00-18:00: Integration and testing
+- 18:00-19:00: Polish and deployment
+- 19:00+: Demo preparation
+
+## NEXT STEPS
+1. Start with FastAPI backend setup
+2. Convert existing functions to endpoints
+3. Create React frontend structure
+4. Implement core components
+5. Add real-time features
+6. Test and deploy locally
