@@ -19,16 +19,42 @@ def parse_turn(raw: str) -> dict:
         # If the model drifted, show raw and fail softly
         print("[warn] LLM returned non-JSON. Raw reply:\n", raw)
         return {"speak": "Sorry—please try again.", "done": False, "actions": []}
+    
+    # Use validator to check and fix the output
+    from app.validator import validate_payload
+    is_valid, errors = validate_payload(obj)
+    
+    if not is_valid:
+        print(f"[warn] LLM output validation failed: {errors}")
+        # Try to fix common issues
+        obj = _fix_common_issues(obj, errors)
+        is_valid, errors = validate_payload(obj)
+        
+        if not is_valid:
+            return {"speak": f"Sorry, I had trouble understanding that. Errors: {'; '.join(errors[:3])}", "done": False, "actions": []}
+    
     # enforce keys with defaults
     speak = obj.get("speak", "")
     done = bool(obj.get("done", False))
     actions = obj.get("actions", []) or []
+    
     # make sure actions are list of dicts with 'action'
     safe_actions = []
     for a in actions:
         if isinstance(a, dict) and "action" in a:
             safe_actions.append({"action": a["action"], "args": a.get("args", {}) or {}})
+    
     return {"speak": str(speak), "done": done, "actions": safe_actions}
+
+def _fix_common_issues(obj, errors):
+    """Try to fix common validation issues"""
+    # Fix missing date in log_meal
+    for action in obj.get("actions", []):
+        if action.get("action") == "log_meal" and "date" not in action.get("args", {}):
+            from datetime import date
+            action["args"]["date"] = date.today().isoformat()
+    
+    return obj
 
 # ---- dispatch ----
 def dispatch(act: dict):
@@ -52,6 +78,67 @@ def required(d, keys):
     missing = [k for k in keys if k not in d]
     if missing:
         raise ValueError(f"Missing required fields: {', '.join(missing)}")
+
+def generate_sql_commands(actions):
+    """Generate SQL commands based on validated actions"""
+    sql_commands = []
+    
+    for action in actions:
+        action_type = action["action"]
+        args = action.get("args", {})
+        
+        if action_type == "add_food":
+            sql = f"""INSERT INTO foods (user_id, name, serving_desc, cal, protein, carbs, fat, provenance) 
+                     VALUES (1, '{args["name"]}', '{args["serving_desc"]}', {args["cal"]}, {args["protein"]}, {args["carbs"]}, {args["fat"]}, 'llm_estimate')"""
+            sql_commands.append({
+                "sql": sql,
+                "description": f"Add food: {args['name']}"
+            })
+            
+        elif action_type == "log_meal":
+            from datetime import date
+            date = args.get("date", date.today().isoformat())  # Use today's date
+            # First create log entry
+            log_sql = f"INSERT INTO logs (user_id, log_date) VALUES (1, '{date}') ON CONFLICT DO NOTHING"
+            sql_commands.append({
+                "sql": log_sql,
+                "description": f"Create log entry for {date}"
+            })
+            
+            # Then add each food item
+            for item in args.get("items", []):
+                food_name = item["name"]
+                qty = item["qty"]
+                log_item_sql = f"""INSERT INTO log_items (log_id, food_id, qty) 
+                                 VALUES ((SELECT id FROM logs WHERE user_id=1 AND log_date='{date}'), 
+                                        (SELECT id FROM foods WHERE name='{food_name}' AND user_id=1), {qty})"""
+                sql_commands.append({
+                    "sql": log_item_sql,
+                    "description": f"Log {qty} {food_name}"
+                })
+                
+        elif action_type == "set_goal":
+            sql = f"""INSERT OR REPLACE INTO goals (user_id, calories, protein_g, carbs_g, fat_g) 
+                     VALUES (1, {args["calories"]}, {args["protein_g"]}, {args["carbs_g"]}, {args["fat_g"]})"""
+            sql_commands.append({
+                "sql": sql,
+                "description": f"Set nutrition goals"
+            })
+    
+    return sql_commands
+
+def execute_sql_command(sql: str, description: str = ""):
+    """Execute a SQL command and return the result"""
+    try:
+        with api._conn() as conn:
+            cursor = conn.execute(sql)
+            conn.commit()
+            if description:
+                print(f"[SQL] {description}: {sql}")
+            return {"success": True, "description": description}
+    except Exception as e:
+        print(f"[SQL ERROR] {description}: {sql} - Error: {e}")
+        return {"success": False, "error": str(e), "description": description}
 
 def _log_meal_with_estimates(args):
     d = args.get("date") or date.today().isoformat()
@@ -95,6 +182,15 @@ def run_chat():
         raw = chat_once(history)
         turn = parse_turn(raw)
         print(turn["speak"])
+        
+        # Generate and execute SQL commands based on validated actions
+        sql_commands = generate_sql_commands(turn["actions"])
+        for sql_cmd in sql_commands:
+            result = execute_sql_command(sql_cmd["sql"], sql_cmd.get("description", ""))
+            if not result["success"]:
+                print(f"[SQL Error] {result['error']}")
+        
+        # Execute regular actions (for display/logging)
         for act in turn["actions"]:
             try:
                 dispatch(act)

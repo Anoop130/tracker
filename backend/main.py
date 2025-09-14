@@ -18,7 +18,7 @@ from app.llm import chat_once, estimate_food
 from db import api
 from database import (
     init_database, get_user_foods, add_user_food, 
-    get_user_goals, set_user_goals, get_user_daily_summary
+    get_user_goals, set_user_goals, get_user_daily_summary, get_connection
 )
 
 load_dotenv()
@@ -33,7 +33,7 @@ app = FastAPI(
 # CORS middleware for React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React dev servers
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:5173"],  # React dev servers
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -81,6 +81,10 @@ class ChatMessage(BaseModel):
 class ChatResponse(BaseModel):
     speak: str
     actions: List[Dict[str, Any]]
+    sql_commands: List[Dict[str, Any]] = []
+
+# Security scheme
+security = HTTPBearer()
 
 # Authentication dependency (simplified for now)
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -207,12 +211,27 @@ async def chat_with_llm(chat: ChatMessage, current_user: dict = Depends(get_curr
         raw_response = chat_once(history)
         
         # Parse the response using existing logic
-        from app.main import parse_turn
+        import sys
+        sys.path.append('..')
+        from app.main import parse_turn, generate_sql_commands
         parsed = parse_turn(raw_response)
+        
+        # Generate and execute SQL commands based on validated actions
+        sql_commands = generate_sql_commands(parsed["actions"])
+        sql_results = []
+        for sql_cmd in sql_commands:
+            try:
+                with get_connection() as conn:
+                    conn.execute(sql_cmd["sql"])
+                    conn.commit()
+                sql_results.append({"success": True, "description": sql_cmd.get("description", "")})
+            except Exception as e:
+                sql_results.append({"success": False, "error": str(e), "description": sql_cmd.get("description", "")})
         
         return ChatResponse(
             speak=parsed["speak"],
-            actions=parsed["actions"]
+            actions=parsed["actions"],
+            sql_commands=sql_results
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM error: {str(e)}")

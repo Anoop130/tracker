@@ -11,29 +11,34 @@ You are a registered dietitian & nutrition coach.
 You MUST return exactly one JSON object with keys: speak (string), done (bool), actions (array).
 Never return anything other than this JSON object. No preamble or explanations.
 
-Allowed actions and required fields:
-- set_goal {calories, protein_g, carbs_g, fat_g}
-- add_food {name, serving_desc, cal, protein, carbs, fat, provenance?}
-- log_meal {date?, items:[{name, qty}]}
-- day_summary {date?}
+For food logging, return structured actions with these exact fields:
+- For "log X food": return log_meal action with items containing name and qty
+- For "add X food": return add_food action first, then log_meal
+
+Required action formats:
+- set_goal: {"action": "set_goal", "args": {"calories": number, "protein_g": number, "carbs_g": number, "fat_g": number}}
+- add_food: {"action": "add_food", "args": {"name": "food_name", "serving_desc": "description", "cal": number, "protein": number, "carbs": number, "fat": number, "provenance": "llm_estimate"}}
+- log_meal: {"action": "log_meal", "args": {"date": "YYYY-MM-DD", "items": [{"name": "food_name", "qty": number}]}}
+- day_summary: {"action": "day_summary", "args": {"date": "YYYY-MM-DD"}}
 
 Behavioral rules:
-1) If the user provides stats (age, sex, height, weight, body fat, activity, goal: lean bulk/bulk/cut/maintain):
-   - Compute daily calorie target using a standard method (e.g., Mifflin-St Jeor), apply an activity multiplier, then:
-       lean_bulk: +10~15%, bulk: +15~20%, cut: -15~25%, maintain: 0%.
-   - Split macros (default): protein 1.6–2.2 g/kg body weight, fat 20–30% of calories, rest carbs.
-   - Emit a single set_goal action with numbers.
-   - In speak, summarize the numbers briefly.
+1) For food logging (e.g., "log 2 eggs", "add 1 leg quarter and rice meal"):
+   - Parse quantities and food names carefully
+   - For "log X food": assume food exists, just log it
+   - For "add X food": add food to database first, then log it
+   - ALWAYS use today's date: 2025-09-14
+   - ALWAYS provide a helpful speak message describing what you're doing
 
-2) For food logging:
-   - Parse free-form input (quantities, plurals) and emit ONE log_meal action with items.
-   - Use date=today unless user says otherwise.
+2) For goal setting:
+   - Compute daily calorie target using Mifflin-St Jeor equation
+   - Apply activity multiplier and goal adjustment
+   - Split macros: protein 1.6-2.2 g/kg, fat 20-30% calories, rest carbs
 
-3) If a food isn't in the DB:
-   - Emit one add_food action first with average macros for a typical serving (set provenance="llm_estimate"),
-     then emit log_meal that references it by name.
-
-4) Never say “recorded” without actions. If nothing to write, ask a concise follow-up question in 'speak' and set actions=[].
+3) Always provide realistic macro estimates for foods
+4) Use proper food names (singular form)
+5) Never say "recorded" without actions
+6) ALWAYS include a meaningful speak message - never leave it empty
+7) CRITICAL: Always use date "2025-09-14" for all log_meal actions
 """
 
 
@@ -41,21 +46,63 @@ Behavioral rules:
 def _offline_chat(history):
     last = (history[-1]["content"] if history else "").lower()
     if "total" in last or ("show" in last and "today" in last):
-        return json.dumps({"speak":"Here are today’s totals.","done":False,"actions":[{"action":"day_summary","args":{}}]})
+        return json.dumps({"speak":"Here are today's totals.","done":False,"actions":[{"action":"day_summary","args":{}}]})
     if "set goal" in last:
         nums = [w for w in last.replace(",", " ").split() if w.replace(".", "", 1).isdigit()]
         if len(nums) >= 4:
             c, p, car, f = map(float, nums[:4])
             return json.dumps({"speak":"Goal saved.","done":False,"actions":[{"action":"set_goal","args":{"calories":c,"protein_g":p,"carbs_g":car,"fat_g":f}}]})
         return json.dumps({"speak":"Give four numbers: calories protein carbs fat.","done":False,"actions":[]})
-    if last.startswith("log"):
+    if last.startswith("log") or last.startswith("add"):
         toks = last.split()
         qty = 1.0
         name = toks[-1] if len(toks) > 1 else "item"
         if len(toks) >= 3 and toks[1].replace(".", "", 1).isdigit():
             qty = float(toks[1]); name = toks[2]
         if name.endswith("s"): name = name[:-1]
-        return json.dumps({"speak":f"Logging {qty:g} {name}.","done":False,"actions":[{"action":"log_meal","args":{"items":[{"name":name,"qty":qty}]}}]})
+        
+        from datetime import date
+        today = "2025-09-14"  # Use today's date
+        
+        # Generate realistic macros for common foods
+        macros = {
+            "apple": {"cal": 95, "protein": 0.3, "carbs": 25, "fat": 0.3},
+            "egg": {"cal": 70, "protein": 6, "carbs": 0.6, "fat": 5},
+            "banana": {"cal": 105, "protein": 1.3, "carbs": 27, "fat": 0.4},
+            "rice": {"cal": 206, "protein": 4.3, "carbs": 45, "fat": 0.4}
+        }
+        
+        food_macros = macros.get(name, {"cal": 50, "protein": 1, "carbs": 10, "fat": 1})
+        
+        actions = []
+        if last.startswith("add"):
+            # Add food first, then log
+            actions.append({
+                "action": "add_food",
+                "args": {
+                    "name": name,
+                    "serving_desc": f"1 {name}",
+                    "cal": food_macros["cal"],
+                    "protein": food_macros["protein"],
+                    "carbs": food_macros["carbs"],
+                    "fat": food_macros["fat"],
+                    "provenance": "llm_estimate"
+                }
+            })
+        
+        actions.append({
+            "action": "log_meal",
+            "args": {
+                "date": today,
+                "items": [{"name": name, "qty": qty}]
+            }
+        })
+        
+        return json.dumps({
+            "speak": f"Added and logged {qty:g} {name} for today!",
+            "done": False,
+            "actions": actions
+        })
     return json.dumps({"speak":"(offline) Try: 'set goal 1800 140 170 60', 'log 2 eggs', 'show today totals'","done":False,"actions":[]})
 
 def _offline_estimate(name:str):
